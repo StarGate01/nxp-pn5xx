@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/nix/store/5ddk8z4abpvz4mzbxppz6jmhf017f3fr-linux-5.15.47-dev/lib/modules/5.15.47/source/include"
+            ],
+            "defines": [ "CONFIG_ACPI" ],
+            "compilerPath": "/nix/store/0ldkj6mklr9r8fml6927akjdl3zih46m-gcc-wrapper-11.3.0/bin/gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
