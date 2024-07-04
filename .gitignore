@@ -1,0 +1,7 @@
+.direnv/
+*.cmd
+*.symvers
+*.order
+*.ko
+*.mod*
+*.o
