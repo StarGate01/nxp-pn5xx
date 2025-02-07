@@ -14,7 +14,6 @@
           '';
 
           buildInputs = with pkgs; [
-            linux.dev
           ];
         };
     };

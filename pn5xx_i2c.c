@@ -18,6 +18,9 @@
  *
  */
 
+#define CONFIG_OF 1
+#define CONFIG_ACPI 1
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -35,16 +38,16 @@
 #include <linux/gpio.h>
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
-#include "pn5xx_i2c.h"
-#include <linux/of_gpio.h>
 #include <linux/regulator/consumer.h>
-#include <linux/of.h>
 #include <linux/printk.h>
 #include <linux/version.h>
 
-#ifdef CONFIG_ACPI
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/acpi.h>
-#endif
+
+#include "pn5xx_i2c.h"
+
 
 #define MAX_BUFFER_SIZE	512
 
@@ -409,16 +412,20 @@ static const struct file_operations pn54x_dev_fops = {
 /*
  * Handlers for alternative sources of platform_data
  */
-#ifdef CONFIG_OF
+
 /*
  * Translate OpenFirmware node properties into platform_data
  */
-static int pn54x_get_pdata(struct device *dev,
+#ifdef CONFIG_OF
+static int pn54x_get_pdata_of(struct device *dev,
 							struct pn544_i2c_platform_data *pdata)
 {
 	struct device_node *node;
-	u32 flags;
 	int val;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
+	u32 flags;
+#endif
 
 	/* make sure there is actually a device tree node */
 	node = dev->of_node;
@@ -430,7 +437,11 @@ static int pn54x_get_pdata(struct device *dev,
 	/* read the dev tree data */
 
 	/* ven pin - enable's power to the chip - REQUIRED */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
 	val = of_get_named_gpio_flags(node, "enable-gpios", 0, &flags);
+#else
+	val = of_get_named_gpio(node, "enable-gpios", 0);
+#endif
 	if (val >= 0) {
 		pdata->ven_gpio = val;
 	}
@@ -440,7 +451,11 @@ static int pn54x_get_pdata(struct device *dev,
 	}
 
 	/* firm pin - controls firmware download - OPTIONAL */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
 	val = of_get_named_gpio_flags(node, "firmware-gpios", 0, &flags);
+#else
+	val = of_get_named_gpio(node, "firmware-gpios", 0);
+#endif
 	if (val >= 0) {
 		pdata->firm_gpio = val;
 	}
@@ -450,7 +465,11 @@ static int pn54x_get_pdata(struct device *dev,
 	}
 
 	/* irq pin - data available irq - REQUIRED */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
 	val = of_get_named_gpio_flags(node, "interrupt-gpios", 0, &flags);
+#else
+	val = of_get_named_gpio(node, "interrupt-gpios", 0);
+#endif
 	if (val >= 0) {
 		pdata->irq_gpio = val;
 	}
@@ -460,7 +479,11 @@ static int pn54x_get_pdata(struct device *dev,
 	}
 
 	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
 	val = of_get_named_gpio_flags(node, "nxp,pn54x-clkreq", 0, &flags);
+#else
+	val = of_get_named_gpio(node, "nxp,pn54x-clkreq", 0);
+#endif
 	if (val >= 0) {
 		pdata->clkreq_gpio = val;
 	}
@@ -506,8 +529,10 @@ static int pn54x_get_pdata(struct device *dev,
 
 	return 0;
 }
-#elif CONFIG_ACPI
-static int pn54x_get_pdata(struct device *dev,
+#endif
+
+#ifdef CONFIG_ACPI
+static int pn54x_get_pdata_acpi(struct device *dev,
 							struct pn544_i2c_platform_data *pdata)
 {
 	struct gpio_desc *irq_desc, *ven_desc;
@@ -543,21 +568,13 @@ static int pn54x_get_pdata(struct device *dev,
 
 	return 0;
 }
-#else
-static int pn54x_get_pdata(struct device *dev,
-							struct pn544_i2c_platform_data *pdata)
-{
-	pdata = dev->platform_data;
-	return 0;
-}
 #endif
-
 
 /*
  * pn54x_probe
  */
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,4,0)
- static int __devinit pn54x_probe(struct i2c_client *client,
+static int __devinit pn54x_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
 static int pn54x_probe(struct i2c_client *client,
@@ -573,78 +590,88 @@ static int pn54x_probe(struct i2c_client *client)
 
 	pr_info("%s\n", __func__);
 
-	/* ---- retrieve the platform data ---- */
-	/* If the dev.platform_data is NULL, then */
-	/* attempt to read from the device tree */
-	/* or from ACPI */
-	if(!client->dev.platform_data)
+	// If the dev.platform_data is NULL, then attempt to read from ACPI first, then the device tree
+	bool is_acpi = false;
+	pdata = client->dev.platform_data;
+
+	if(!pdata)
 	{
-		ret = pn54x_get_pdata(&(client->dev), &tmp_pdata);
-		if(ret){
+#ifdef CONFIG_ACPI
+		if (ACPI_HANDLE(&client->dev)) {
+			is_acpi = true;
+			pr_info("%s: configuring via ACPI\n", __func__);
+			ret = pn54x_get_pdata_acpi(&(client->dev), &tmp_pdata);
+		}
+#endif
+#ifdef CONFIG_OF
+		// If device was not configured via ACPI, or ACPI configuration failed
+		if ((!is_acpi || ret) && client->dev.of_node) {
+			pr_info("%s: configuring via device tree\n", __func__);
+			ret = pn54x_get_pdata_of(&(client->dev), &tmp_pdata);
+		}
+#endif
+
+		if(ret) {
 			return ret;
 		}
 
 		pdata = &tmp_pdata;
 	}
-	else
-	{
-		pdata = client->dev.platform_data;
-	}
 
 	if (pdata == NULL) {
-		pr_err("%s : nfc probe fail\n", __func__);
+		pr_err("%s: nfc probe fail\n", __func__);
 		return  -ENODEV;
 	}
 
 	/* validate the the adapter has basic I2C functionality */
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		pr_err("%s : need I2C_FUNC_I2C\n", __func__);
+		pr_err("%s: need I2C_FUNC_I2C\n", __func__);
 		return  -ENODEV;
 	}
 
-/* if ACPI config is used, the GPIO pins are already reserved */
-#ifndef CONFIG_ACPI
-	/* reserve the GPIO pins */
-	pr_info("%s: request irq_gpio %d\n", __func__, pdata->irq_gpio);
-	ret = gpio_request(pdata->irq_gpio, "nfc_int");
-	if (ret){
-		pr_err("%s :not able to get GPIO irq_gpio\n", __func__);
-		return  -ENODEV;
-	}
-	ret = gpio_to_irq(pdata->irq_gpio);
-	if (ret < 0){
-		pr_err("%s :not able to map GPIO irq_gpio to an IRQ\n", __func__);
-		goto err_ven;
-	}
-	else{
-		client->irq = ret;
-	}
-
-	pr_info("%s: request ven_gpio %d\n", __func__, pdata->ven_gpio);
-	ret = gpio_request(pdata->ven_gpio, "nfc_ven");
-	if (ret){
-		pr_err("%s :not able to get GPIO ven_gpio\n", __func__);
-		goto err_ven;
-	}
-
-	if (gpio_is_valid(pdata->firm_gpio)) {
-		pr_info("%s: request firm_gpio %d\n", __func__, pdata->firm_gpio);
-		ret = gpio_request(pdata->firm_gpio, "nfc_firm");
+	/* if ACPI config is used, the GPIO pins are already reserved */
+	if(!is_acpi) {
+		/* reserve the GPIO pins */
+		pr_info("%s: request irq_gpio %d\n", __func__, pdata->irq_gpio);
+		ret = gpio_request(pdata->irq_gpio, "nfc_int");
 		if (ret){
-			pr_err("%s :not able to get GPIO firm_gpio\n", __func__);
-			goto err_firm;
+			pr_err("%s: not able to get GPIO irq_gpio\n", __func__);
+			return  -ENODEV;
+		}
+		ret = gpio_to_irq(pdata->irq_gpio);
+		if (ret < 0){
+			pr_err("%s: not able to map GPIO irq_gpio to an IRQ\n", __func__);
+			goto err_ven;
+		}
+		else{
+			client->irq = ret;
+		}
+
+		pr_info("%s: request ven_gpio %d\n", __func__, pdata->ven_gpio);
+		ret = gpio_request(pdata->ven_gpio, "nfc_ven");
+		if (ret){
+			pr_err("%s: not able to get GPIO ven_gpio\n", __func__);
+			goto err_ven;
+		}
+
+		if (gpio_is_valid(pdata->firm_gpio)) {
+			pr_info("%s: request firm_gpio %d\n", __func__, pdata->firm_gpio);
+			ret = gpio_request(pdata->firm_gpio, "nfc_firm");
+			if (ret){
+				pr_err("%s: not able to get GPIO firm_gpio\n", __func__);
+				goto err_firm;
+			}
+		}
+
+		if (gpio_is_valid(pdata->clkreq_gpio)) {
+			pr_info("%s: request clkreq_gpio %d\n", __func__, pdata->clkreq_gpio);
+			ret = gpio_request(pdata->clkreq_gpio, "nfc_clkreq");
+			if (ret){
+				pr_err("%s: not able to get GPIO clkreq_gpio\n", __func__);
+				goto err_clkreq;
+			}
 		}
 	}
-
-	if (gpio_is_valid(pdata->clkreq_gpio)) {
-		pr_info("%s: request clkreq_gpio %d\n", __func__, pdata->clkreq_gpio);
-		ret = gpio_request(pdata->clkreq_gpio, "nfc_clkreq");
-		if (ret){
-			pr_err("%s :not able to get GPIO clkreq_gpio\n", __func__);
-			goto err_clkreq;
-		}
-	}
-#endif
 
 	/* allocate the pn54x driver information structure */
 	pn54x_dev = kzalloc(sizeof(*pn54x_dev), GFP_KERNEL);
@@ -735,15 +762,17 @@ err_misc_register:
 err_exit:
 	if (gpio_is_valid(pdata->clkreq_gpio))
 		gpio_free(pdata->clkreq_gpio);
-#ifndef CONFIG_ACPI
+
+	if(!is_acpi) {
 err_clkreq:
-	if (gpio_is_valid(pdata->firm_gpio))
-		gpio_free(pdata->firm_gpio);
+		if (gpio_is_valid(pdata->firm_gpio))
+			gpio_free(pdata->firm_gpio);
 err_firm:
-	gpio_free(pdata->ven_gpio);
+		gpio_free(pdata->ven_gpio);
 err_ven:
-	gpio_free(pdata->irq_gpio);
-#endif
+		gpio_free(pdata->irq_gpio);
+	}
+
 	return ret;
 }
 

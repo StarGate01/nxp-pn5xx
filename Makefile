@@ -1,5 +1,6 @@
-KERNELRELEASE ?= $(shell uname -r)
-BUILD_KERNEL_PATH ?= $(shell nix-build -E '(import <nixpkgs> {}).linux.dev' --no-out-link)/lib/modules/$(KERNELRELEASE)/build
+KERNELRELEASE ?= 6.12.10
+#$(shell uname -r)
+BUILD_KERNEL_PATH ?= $(shell nix-build -E '(import <nixpkgs> {}).linux_6_12.dev' --no-out-link)/lib/modules/$(KERNELRELEASE)/build
 #INSTALL_MOD_PATH ?= $(INSTALL_PATH)/lib/modules/$(KERNELRELEASE)
 #INSTALL_PN5XX_I2C_PATH ?= $(INSTALL_MOD_PATH)/kernel/drivers/nfc
 
