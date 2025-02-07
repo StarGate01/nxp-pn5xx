@@ -18,9 +18,6 @@
  *
  */
 
-#define CONFIG_OF 1
-#define CONFIG_ACPI 1
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
