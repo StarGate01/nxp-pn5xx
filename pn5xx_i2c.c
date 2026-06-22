@@ -32,7 +32,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
-#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
 #include <linux/regulator/consumer.h>
@@ -61,10 +61,10 @@ struct pn54x_dev	{
 	struct mutex read_mutex;
 	struct i2c_client *client;
 	struct miscdevice pn54x_device;
-	int ven_gpio;
-	int firm_gpio;
-	int irq_gpio;
-	int clkreq_gpio;
+	struct gpio_desc *ven_gpio;
+	struct gpio_desc *firm_gpio;
+	struct gpio_desc *irq_gpio;
+	struct gpio_desc *clkreq_gpio;
 	struct regulator *pvdd_reg;
 	struct regulator *vbat_reg;
 	struct regulator *pmuvcc_reg;
@@ -144,28 +144,28 @@ static int pn544_enable(struct pn54x_dev *dev, int mode)
 
 	if (MODE_RUN == mode) {
 		pr_info("%s power on\n", __func__);
-		if (gpio_is_valid(dev->firm_gpio))
-			gpio_set_value_cansleep(dev->firm_gpio, 0);
-		gpio_set_value_cansleep(dev->ven_gpio, 1);
+		if (dev->firm_gpio)
+			gpiod_set_value_cansleep(dev->firm_gpio, 0);
+		gpiod_set_value_cansleep(dev->ven_gpio, 1);
 		msleep(100);
 	}
 	else if (MODE_FW == mode) {
 		/* power on with firmware download (requires hw reset)
 		 */
 		pr_info("%s power on with firmware\n", __func__);
-		gpio_set_value(dev->ven_gpio, 1);
+		gpiod_set_value(dev->ven_gpio, 1);
 		msleep(20);
-		if (gpio_is_valid(dev->firm_gpio)) {
-			gpio_set_value(dev->firm_gpio, 1);
+		if (dev->firm_gpio) {
+			gpiod_set_value(dev->firm_gpio, 1);
 		}
 		else {
 			pr_err("%s Unused Firm GPIO %d\n", __func__, mode);
 			return GPIO_UNUSED;
 		}
 		msleep(20);
-		gpio_set_value(dev->ven_gpio, 0);
+		gpiod_set_value(dev->ven_gpio, 0);
 		msleep(100);
-		gpio_set_value(dev->ven_gpio, 1);
+		gpiod_set_value(dev->ven_gpio, 1);
 		msleep(20);
 	}
 	else {
@@ -189,9 +189,9 @@ static void pn544_disable(struct pn54x_dev *dev)
 {
 	/* power off */
 	pr_info("%s power off\n", __func__);
-	if (gpio_is_valid(dev->firm_gpio))
-		gpio_set_value_cansleep(dev->firm_gpio, 0);
-	gpio_set_value_cansleep(dev->ven_gpio, 0);
+	if (dev->firm_gpio)
+		gpiod_set_value_cansleep(dev->firm_gpio, 0);
+	gpiod_set_value_cansleep(dev->ven_gpio, 0);
 	msleep(100);
 
 	if(dev->sevdd_reg) regulator_disable(dev->sevdd_reg);
@@ -218,7 +218,7 @@ static ssize_t pn54x_dev_read(struct file *filp, char __user *buf,
 
 	mutex_lock(&pn54x_dev->read_mutex);
 
-	if (!gpio_get_value(pn54x_dev->irq_gpio)) {
+	if (!gpiod_get_value(pn54x_dev->irq_gpio)) {
 		if (filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto fail;
@@ -236,7 +236,7 @@ static ssize_t pn54x_dev_read(struct file *filp, char __user *buf,
 			if (ret)
 				goto fail;
 
-			if (gpio_get_value(pn54x_dev->irq_gpio))
+			if (gpiod_get_value(pn54x_dev->irq_gpio))
 				break;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,5,0)
@@ -366,8 +366,8 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case PN54X_CLK_REQ:
 		if(1 == arg){
-			if(gpio_is_valid(pn54x_dev->clkreq_gpio)){
-				gpio_set_value(pn54x_dev->clkreq_gpio, 1);
+			if(pn54x_dev->clkreq_gpio){
+				gpiod_set_value(pn54x_dev->clkreq_gpio, 1);
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);
@@ -375,8 +375,8 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 			}
 		}
 		else if(0 == arg) {
-			if(gpio_is_valid(pn54x_dev->clkreq_gpio)){
-				gpio_set_value(pn54x_dev->clkreq_gpio, 0);
+			if(pn54x_dev->clkreq_gpio){
+				gpiod_set_value(pn54x_dev->clkreq_gpio, 0);
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);

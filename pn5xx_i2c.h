@@ -38,11 +38,14 @@
 #define PN544_SET_PWR	_IOW(PN544_MAGIC, 0x01, unsigned int)
 #define PN54X_CLK_REQ	_IOW(PN544_MAGIC, 0x02, unsigned int)
 
+struct gpio_desc;
+struct regulator;
+
 struct pn544_i2c_platform_data {
-	unsigned int irq_gpio;
-	unsigned int ven_gpio;
-	unsigned int firm_gpio;
-	unsigned int clkreq_gpio;
+	struct gpio_desc *irq_gpio;
+	struct gpio_desc *ven_gpio;
+	struct gpio_desc *firm_gpio;
+	struct gpio_desc *clkreq_gpio;
 	struct regulator *pvdd_reg;
 	struct regulator *vbat_reg;
 	struct regulator *pmuvcc_reg;
