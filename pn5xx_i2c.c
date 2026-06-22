@@ -492,31 +492,29 @@ static int pn54x_get_pdata_of(struct device *dev,
 static int pn54x_get_pdata_acpi(struct device *dev,
 							struct pn544_i2c_platform_data *pdata)
 {
-	struct gpio_desc *irq_desc, *ven_desc;
+	struct gpio_desc *desc;
 
 	/* irq pin - data available irq - REQUIRED (ACPI index 0: GpioInt) */
-	irq_desc = devm_gpiod_get_index(dev, NULL, 0, GPIOD_ASIS);
-	if (IS_ERR(irq_desc)) {
+	desc = devm_gpiod_get_index(dev, NULL, 0, GPIOD_IN);
+	if (IS_ERR(desc)) {
 		dev_err(dev, "IRQ GPIO error getting from ACPI\n");
-		return PTR_ERR(irq_desc);
+		return PTR_ERR(desc);
 	}
-	pdata->irq_gpio = desc_to_gpio(irq_desc);
-	pr_info("%s: request irq_gpio %d\n", __func__, pdata->irq_gpio);
+	pdata->irq_gpio = desc;
 
 	/* ven pin - enable's power to the chip - REQUIRED (ACPI index 2: GpioIo, index 1 is firmware) */
-	ven_desc = devm_gpiod_get_index(dev, NULL, 2, GPIOD_ASIS);
-	if (IS_ERR(ven_desc)) {
+	desc = devm_gpiod_get_index(dev, NULL, 2, GPIOD_OUT_LOW);
+	if (IS_ERR(desc)) {
 		dev_err(dev, "VEN GPIO error getting from ACPI\n");
-		return PTR_ERR(ven_desc);
+		return PTR_ERR(desc);
 	}
-	pdata->ven_gpio = desc_to_gpio(ven_desc);
-	pr_info("%s: request ven_gpio %d\n", __func__, pdata->ven_gpio);
+	pdata->ven_gpio = desc;
 
 	/* firm pin - controls firmware download - OPTIONAL */
-	pdata->firm_gpio = GPIO_UNUSED;
+	pdata->firm_gpio = NULL;
 
 	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
-	pdata->clkreq_gpio = GPIO_UNUSED;
+	pdata->clkreq_gpio = NULL;
 
 	pdata->pvdd_reg = NULL;
 	pdata->vbat_reg = NULL;
@@ -586,56 +584,19 @@ static int pn54x_probe(struct i2c_client *client)
 		return  -ENODEV;
 	}
 
-	/* if ACPI config is used, the GPIO pins are already reserved */
-	if(!is_acpi) {
-		/* reserve the GPIO pins */
-		pr_info("%s: request irq_gpio %d\n", __func__, pdata->irq_gpio);
-		ret = gpio_request(pdata->irq_gpio, "nfc_int");
-		if (ret){
-			pr_err("%s: not able to get GPIO irq_gpio\n", __func__);
-			return  -ENODEV;
-		}
-		ret = gpio_to_irq(pdata->irq_gpio);
-		if (ret < 0){
-			pr_err("%s: not able to map GPIO irq_gpio to an IRQ\n", __func__);
-			goto err_ven;
-		}
-		else{
-			client->irq = ret;
-		}
-
-		pr_info("%s: request ven_gpio %d\n", __func__, pdata->ven_gpio);
-		ret = gpio_request(pdata->ven_gpio, "nfc_ven");
-		if (ret){
-			pr_err("%s: not able to get GPIO ven_gpio\n", __func__);
-			goto err_ven;
-		}
-
-		if (gpio_is_valid(pdata->firm_gpio)) {
-			pr_info("%s: request firm_gpio %d\n", __func__, pdata->firm_gpio);
-			ret = gpio_request(pdata->firm_gpio, "nfc_firm");
-			if (ret){
-				pr_err("%s: not able to get GPIO firm_gpio\n", __func__);
-				goto err_firm;
-			}
-		}
-
-		if (gpio_is_valid(pdata->clkreq_gpio)) {
-			pr_info("%s: request clkreq_gpio %d\n", __func__, pdata->clkreq_gpio);
-			ret = gpio_request(pdata->clkreq_gpio, "nfc_clkreq");
-			if (ret){
-				pr_err("%s: not able to get GPIO clkreq_gpio\n", __func__);
-				goto err_clkreq;
-			}
-		}
+	/* map the IRQ GPIO to an IRQ number */
+	ret = gpiod_to_irq(pdata->irq_gpio);
+	if (ret < 0) {
+		pr_err("%s: not able to map irq_gpio to an IRQ\n", __func__);
+		return ret;
 	}
+	client->irq = ret;
 
 	/* allocate the pn54x driver information structure */
 	pn54x_dev = kzalloc(sizeof(*pn54x_dev), GFP_KERNEL);
 	if (pn54x_dev == NULL) {
 		dev_err(&client->dev, "failed to allocate memory for module data\n");
-		ret = -ENOMEM;
-		goto err_exit;
+		return -ENOMEM;
 	}
 
 	/* store the platform data in the driver info struct */
@@ -685,19 +646,7 @@ static int pn54x_probe(struct i2c_client *client)
 err_request_irq_failed:
 	misc_deregister(&pn54x_dev->pn54x_device);
 err_misc_register:
-err_exit:
-	if (gpio_is_valid(pdata->clkreq_gpio))
-		gpio_free(pdata->clkreq_gpio);
-
-	if(!is_acpi) {
-err_clkreq:
-		if (gpio_is_valid(pdata->firm_gpio))
-			gpio_free(pdata->firm_gpio);
-err_firm:
-		gpio_free(pdata->ven_gpio);
-err_ven:
-		gpio_free(pdata->irq_gpio);
-	}
+	kfree(pn54x_dev);
 
 	return ret;
 }
@@ -718,17 +667,6 @@ static void pn54x_remove(struct i2c_client *client)
 	free_irq(client->irq, pn54x_dev);
 	misc_deregister(&pn54x_dev->pn54x_device);
 	mutex_destroy(&pn54x_dev->read_mutex);
-	gpio_free(pn54x_dev->irq_gpio);
-	gpio_free(pn54x_dev->ven_gpio);
-	if (gpio_is_valid(pn54x_dev->firm_gpio))
-		gpio_free(pn54x_dev->firm_gpio);
-	if (gpio_is_valid(pn54x_dev->clkreq_gpio))
-		gpio_free(pn54x_dev->clkreq_gpio);
-	regulator_put(pn54x_dev->pvdd_reg);
-	regulator_put(pn54x_dev->vbat_reg);
-	regulator_put(pn54x_dev->pmuvcc_reg);
-	regulator_put(pn54x_dev->sevdd_reg);
-
 	kfree(pn54x_dev);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,1,0)
