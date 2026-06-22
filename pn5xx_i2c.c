@@ -534,16 +534,16 @@ static int pn54x_get_pdata_acpi(struct device *dev,
 {
 	struct gpio_desc *irq_desc, *ven_desc;
 
-	/* ven pin - enable's power to the chip - REQUIRED */
+	/* irq pin - data available irq - REQUIRED (ACPI index 0: GpioInt) */
 	irq_desc = devm_gpiod_get_index(dev, NULL, 0, GPIOD_ASIS);
 	if (IS_ERR(irq_desc)) {
 		dev_err(dev, "IRQ GPIO error getting from ACPI\n");
 		return PTR_ERR(irq_desc);
-	} 
+	}
 	pdata->irq_gpio = desc_to_gpio(irq_desc);
 	pr_info("%s: request irq_gpio %d\n", __func__, pdata->irq_gpio);
 
-	/* irq pin - data available irq - REQUIRED */
+	/* ven pin - enable's power to the chip - REQUIRED (ACPI index 2: GpioIo, index 1 is firmware) */
 	ven_desc = devm_gpiod_get_index(dev, NULL, 2, GPIOD_ASIS);
 	if (IS_ERR(ven_desc)) {
 		dev_err(dev, "VEN GPIO error getting from ACPI\n");
