@@ -321,14 +321,7 @@ static int pn54x_dev_open(struct inode *inode, struct file *filp)
 
 static int pn54x_dev_release(struct inode *inode, struct file *filp)
 {
-	// struct pn54x_dev *pn54x_dev = container_of(filp->private_data,
-	//										   struct pn54x_dev,
-	//										   pn54x_device);
-
 	pr_info("%s : closing %d,%d\n", __func__, imajor(inode), iminor(inode));
-
-	// pn544_disable(pn54x_dev);
-
 	return 0;
 }
 
@@ -353,18 +346,18 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 		}
 		break;
 	case PN54X_CLK_REQ:
-		if(1 == arg){
+		if(CLK_ON == arg){
 			if(pn54x_dev->clkreq_gpio){
-				gpiod_set_value(pn54x_dev->clkreq_gpio, 1);
+				gpiod_set_value_cansleep(pn54x_dev->clkreq_gpio, 1);
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);
 				return -EOPNOTSUPP;
 			}
 		}
-		else if(0 == arg) {
+		else if(CLK_OFF == arg) {
 			if(pn54x_dev->clkreq_gpio){
-				gpiod_set_value(pn54x_dev->clkreq_gpio, 0);
+				gpiod_set_value_cansleep(pn54x_dev->clkreq_gpio, 0);
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);
@@ -532,14 +525,13 @@ static int pn54x_probe(struct i2c_client *client)
 #endif
 {
 	int ret = 0;
-	struct pn544_i2c_platform_data *pdata; // gpio values, from board file or DT
+	struct pn544_i2c_platform_data *pdata;
 	struct pn544_i2c_platform_data tmp_pdata;
-	struct pn54x_dev *pn54x_dev; // internal device specific data
+	struct pn54x_dev *pn54x_dev;
+	bool is_acpi = false;
 
 	pr_info("%s\n", __func__);
 
-	// If the dev.platform_data is NULL, then attempt to read from ACPI first, then the device tree
-	bool is_acpi = false;
 	pdata = client->dev.platform_data;
 
 	if(!pdata)
@@ -552,7 +544,7 @@ static int pn54x_probe(struct i2c_client *client)
 		}
 #endif
 #ifdef CONFIG_OF
-		// If device was not configured via ACPI, or ACPI configuration failed
+		/* if device was not configured via ACPI, or ACPI configuration failed */
 		if ((!is_acpi || ret) && client->dev.of_node) {
 			pr_info("%s: configuring via device tree\n", __func__);
 			ret = pn54x_get_pdata_of(&(client->dev), &tmp_pdata);
