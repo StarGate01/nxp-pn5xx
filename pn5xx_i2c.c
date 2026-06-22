@@ -43,10 +43,6 @@
 
 #define MAX_BUFFER_SIZE	512
 
-#define MODE_OFF    0
-#define MODE_RUN    1
-#define MODE_FW     2
-
 /* Only pn548, pn547 and pn544 are supported */
 #define CHIP "pn544"
 #define DRIVER_CARD "PN54x NFC"
@@ -118,7 +114,7 @@ static int pn544_enable(struct pn54x_dev *dev, int mode)
 		r = regulator_enable(dev->vbat_reg);
 		if (r < 0){
 			pr_err("%s: not able to enable vbat\n", __func__);
-			goto enable_exit0;
+			goto err_vbat;
 		}
 	}
 	if(dev->pmuvcc_reg != NULL)
@@ -126,7 +122,7 @@ static int pn544_enable(struct pn54x_dev *dev, int mode)
 		r = regulator_enable(dev->pmuvcc_reg);
 		if (r < 0){
 			pr_err("%s: not able to enable pmuvcc\n", __func__);
-			goto enable_exit1;
+			goto err_pmuvcc;
 		}
 	}
 	if(dev->sevdd_reg != NULL)
@@ -134,48 +130,50 @@ static int pn544_enable(struct pn54x_dev *dev, int mode)
 		r = regulator_enable(dev->sevdd_reg);
 		if (r < 0){
 			pr_err("%s: not able to enable sevdd\n", __func__);
-			goto enable_exit2;
+			goto err_sevdd;
 		}
 	}
 
-	if (MODE_RUN == mode) {
+	if (PWR_ON == mode) {
 		pr_info("%s power on\n", __func__);
 		if (dev->firm_gpio)
 			gpiod_set_value_cansleep(dev->firm_gpio, 0);
 		gpiod_set_value_cansleep(dev->ven_gpio, 1);
 		msleep(100);
 	}
-	else if (MODE_FW == mode) {
+	else if (PWR_FW == mode) {
 		/* power on with firmware download (requires hw reset)
 		 */
 		pr_info("%s power on with firmware\n", __func__);
-		gpiod_set_value(dev->ven_gpio, 1);
-		msleep(20);
-		if (dev->firm_gpio) {
-			gpiod_set_value(dev->firm_gpio, 1);
-		}
-		else {
+		if (!dev->firm_gpio) {
 			pr_err("%s Unused Firm GPIO %d\n", __func__, mode);
-			return GPIO_UNUSED;
+			r = -EOPNOTSUPP;
+			goto err_gpio;
 		}
+		gpiod_set_value_cansleep(dev->ven_gpio, 1);
 		msleep(20);
-		gpiod_set_value(dev->ven_gpio, 0);
+		gpiod_set_value_cansleep(dev->firm_gpio, 1);
+		msleep(20);
+		gpiod_set_value_cansleep(dev->ven_gpio, 0);
 		msleep(100);
-		gpiod_set_value(dev->ven_gpio, 1);
+		gpiod_set_value_cansleep(dev->ven_gpio, 1);
 		msleep(20);
 	}
 	else {
 		pr_err("%s bad arg %d\n", __func__, mode);
-		return -EINVAL;
+		r = -EINVAL;
+		goto err_gpio;
 	}
 
 	return 0;
 
-enable_exit2:
+err_gpio:
+	if(dev->sevdd_reg) regulator_disable(dev->sevdd_reg);
+err_sevdd:
 	if(dev->pmuvcc_reg) regulator_disable(dev->pmuvcc_reg);
-enable_exit1:
+err_pmuvcc:
 	if(dev->vbat_reg) regulator_disable(dev->vbat_reg);
-enable_exit0:
+err_vbat:
 	if(dev->pvdd_reg) regulator_disable(dev->pvdd_reg);
 
 	return r;
@@ -214,7 +212,7 @@ static ssize_t pn54x_dev_read(struct file *filp, char __user *buf,
 
 	mutex_lock(&pn54x_dev->read_mutex);
 
-	if (!gpiod_get_value(pn54x_dev->irq_gpio)) {
+	if (!gpiod_get_value_cansleep(pn54x_dev->irq_gpio)) {
 		if (filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto fail;
@@ -232,7 +230,7 @@ static ssize_t pn54x_dev_read(struct file *filp, char __user *buf,
 			if (ret)
 				goto fail;
 
-			if (gpiod_get_value(pn54x_dev->irq_gpio))
+			if (gpiod_get_value_cansleep(pn54x_dev->irq_gpio))
 				break;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,5,0)
@@ -318,8 +316,6 @@ static int pn54x_dev_open(struct inode *inode, struct file *filp)
 
 	pr_info("%s : %d,%d\n", __func__, imajor(inode), iminor(inode));
 
-	// pn544_enable(pn54x_dev, MODE_RUN);
-
 	return 0;
 }
 
@@ -340,20 +336,16 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 				unsigned long arg)
 {
 	struct pn54x_dev *pn54x_dev = filp->private_data;
+	int ret;
 
 	pr_info("%s, cmd=%d, arg=%lu\n", __func__, cmd, arg);
 	switch (cmd) {
 	case PN544_SET_PWR:
-		if (arg == 2) {
-			/* power on w/FW */
-			if (GPIO_UNUSED == pn544_enable(pn54x_dev, arg)) {
-				return GPIO_UNUSED;
-			}
-		} else if (arg == 1) {
-			/* power on */
-			pn544_enable(pn54x_dev, arg);
-		} else  if (arg == 0) {
-			/* power off */
+		if (arg == PWR_ON || arg == PWR_FW) {
+			ret = pn544_enable(pn54x_dev, arg);
+			if (ret)
+				return ret;
+		} else if (arg == PWR_OFF) {
 			pn544_disable(pn54x_dev);
 		} else {
 			pr_err("%s bad SET_PWR arg %lu\n", __func__, arg);
@@ -367,7 +359,7 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);
-				return GPIO_UNUSED;
+				return -EOPNOTSUPP;
 			}
 		}
 		else if(0 == arg) {
@@ -376,7 +368,7 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 			}
 			else {
 				pr_err("%s Unused Clkreq GPIO %lu\n", __func__, arg);
-				return GPIO_UNUSED;
+				return -EOPNOTSUPP;
 			}
 		} else {
 			pr_err("%s bad CLK_REQ arg %lu\n", __func__, arg);
@@ -539,7 +531,7 @@ static int pn54x_probe(struct i2c_client *client,
 static int pn54x_probe(struct i2c_client *client)
 #endif
 {
-	int ret;
+	int ret = 0;
 	struct pn544_i2c_platform_data *pdata; // gpio values, from board file or DT
 	struct pn544_i2c_platform_data tmp_pdata;
 	struct pn54x_dev *pn54x_dev; // internal device specific data
@@ -676,7 +668,7 @@ static void pn54x_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_OF
-static struct of_device_id pn54x_dt_match[] = {
+static const struct of_device_id pn54x_dt_match[] = {
 	{ .compatible = "nxp,pn547", },
 	{ .compatible = "nxp,pn544", },
 	{},
