@@ -498,16 +498,21 @@ static int pn54x_get_pdata_acpi(struct device *dev,
 	}
 	pdata->irq_gpio = desc;
 
-	/* ven pin - enable's power to the chip - REQUIRED (ACPI index 2: GpioIo, index 1 is firmware) */
+	/* firm pin - controls firmware download - REQUIRED (ACPI index 1: GpioIo) */
+	desc = devm_gpiod_get_index(dev, NULL, 1, GPIOD_OUT_LOW);
+	if (IS_ERR(desc)) {
+		dev_err(dev, "FIRM GPIO error getting from ACPI\n");
+		return PTR_ERR(desc);
+	}
+	pdata->firm_gpio = desc;
+
+	/* ven pin - enable's power to the chip - REQUIRED (ACPI index 2: GpioIo) */
 	desc = devm_gpiod_get_index(dev, NULL, 2, GPIOD_OUT_LOW);
 	if (IS_ERR(desc)) {
 		dev_err(dev, "VEN GPIO error getting from ACPI\n");
 		return PTR_ERR(desc);
 	}
 	pdata->ven_gpio = desc;
-
-	/* firm pin - controls firmware download - OPTIONAL */
-	pdata->firm_gpio = NULL;
 
 	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
 	pdata->clkreq_gpio = NULL;
