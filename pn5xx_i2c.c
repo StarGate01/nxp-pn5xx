@@ -299,7 +299,7 @@ static ssize_t pn54x_dev_write(struct file *filp, const char __user *buf,
 	}
 
 	/* pn54x seems to be slow in handling I2C write requests
-	 * so add 1ms delay after I2C send oparation */
+	 * so add 1ms delay after I2C send operation */
 	udelay(1000);
 
 	return ret;
