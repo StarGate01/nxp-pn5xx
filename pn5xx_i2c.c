@@ -377,12 +377,13 @@ static long  pn54x_dev_ioctl(struct file *filp, unsigned int cmd,
 }
 
 static const struct file_operations pn54x_dev_fops = {
-	.owner	= THIS_MODULE,
-	.read	= pn54x_dev_read,
-	.write	= pn54x_dev_write,
-	.open	= pn54x_dev_open,
-	.release  = pn54x_dev_release,
-	.unlocked_ioctl  = pn54x_dev_ioctl,
+	.owner		= THIS_MODULE,
+	.read		= pn54x_dev_read,
+	.write		= pn54x_dev_write,
+	.open		= pn54x_dev_open,
+	.release	= pn54x_dev_release,
+	.unlocked_ioctl	= pn54x_dev_ioctl,
+	.compat_ioctl	= pn54x_dev_ioctl,
 };
 
 
