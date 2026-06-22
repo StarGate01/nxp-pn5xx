@@ -45,7 +45,6 @@
 
 /* Only pn548, pn547 and pn544 are supported */
 #define CHIP "pn544"
-#define DRIVER_CARD "PN54x NFC"
 #define DRIVER_DESC "NFC driver for PN54x Family"
 
 struct pn54x_dev	{
@@ -416,11 +415,10 @@ static int pn54x_get_pdata_of(struct device *dev,
 	/* firm pin - controls firmware download - OPTIONAL */
 	desc = devm_gpiod_get_optional(dev, "firmware", GPIOD_OUT_LOW);
 	if (IS_ERR(desc)) {
-		pdata->firm_gpio = NULL;
-		dev_warn(dev, "FIRM GPIO <OPTIONAL> error getting from OF node\n");
-	} else {
-		pdata->firm_gpio = desc;
+		dev_err(dev, "FIRM GPIO error getting from OF node\n");
+		return PTR_ERR(desc);
 	}
+	pdata->firm_gpio = desc;
 
 	/* irq pin - data available irq - REQUIRED */
 	desc = devm_gpiod_get(dev, "interrupt", GPIOD_IN);
@@ -433,11 +431,10 @@ static int pn54x_get_pdata_of(struct device *dev,
 	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
 	desc = devm_gpiod_get_optional(dev, "clkreq", GPIOD_OUT_LOW);
 	if (IS_ERR(desc)) {
-		pdata->clkreq_gpio = NULL;
-		dev_warn(dev, "CLKREQ GPIO <OPTIONAL> error getting from OF node\n");
-	} else {
-		pdata->clkreq_gpio = desc;
+		dev_err(dev, "CLKREQ GPIO error getting from OF node\n");
+		return PTR_ERR(desc);
 	}
+	pdata->clkreq_gpio = desc;
 
 	/* handle the regulator lines - these are optional
 	 * PVdd - pad Vdd (544, 547)
