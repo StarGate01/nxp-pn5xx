@@ -40,7 +40,6 @@
 #include <linux/version.h>
 
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 #include <linux/acpi.h>
 
 #include "pn5xx_i2c.h"
@@ -417,76 +416,45 @@ static const struct file_operations pn54x_dev_fops = {
 static int pn54x_get_pdata_of(struct device *dev,
 							struct pn544_i2c_platform_data *pdata)
 {
-	struct device_node *node;
-	int val;
+	struct gpio_desc *desc;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
-	u32 flags;
-#endif
-
-	/* make sure there is actually a device tree node */
-	node = dev->of_node;
-	if (!node)
+	if (!dev->of_node)
 		return -ENODEV;
 
 	memset(pdata, 0, sizeof(*pdata));
 
-	/* read the dev tree data */
-
 	/* ven pin - enable's power to the chip - REQUIRED */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
-	val = of_get_named_gpio_flags(node, "enable-gpios", 0, &flags);
-#else
-	val = of_get_named_gpio(node, "enable-gpios", 0);
-#endif
-	if (val >= 0) {
-		pdata->ven_gpio = val;
-	}
-	else {
+	desc = devm_gpiod_get(dev, "enable", GPIOD_ASIS);
+	if (IS_ERR(desc)) {
 		dev_err(dev, "VEN GPIO error getting from OF node\n");
-		return val;
+		return PTR_ERR(desc);
 	}
+	pdata->ven_gpio = desc_to_gpio(desc);
 
 	/* firm pin - controls firmware download - OPTIONAL */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
-	val = of_get_named_gpio_flags(node, "firmware-gpios", 0, &flags);
-#else
-	val = of_get_named_gpio(node, "firmware-gpios", 0);
-#endif
-	if (val >= 0) {
-		pdata->firm_gpio = val;
-	}
-	else {
+	desc = devm_gpiod_get_optional(dev, "firmware", GPIOD_ASIS);
+	if (IS_ERR(desc)) {
 		pdata->firm_gpio = GPIO_UNUSED;
 		dev_warn(dev, "FIRM GPIO <OPTIONAL> error getting from OF node\n");
+	} else {
+		pdata->firm_gpio = desc ? desc_to_gpio(desc) : GPIO_UNUSED;
 	}
 
 	/* irq pin - data available irq - REQUIRED */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
-	val = of_get_named_gpio_flags(node, "interrupt-gpios", 0, &flags);
-#else
-	val = of_get_named_gpio(node, "interrupt-gpios", 0);
-#endif
-	if (val >= 0) {
-		pdata->irq_gpio = val;
-	}
-	else {
+	desc = devm_gpiod_get(dev, "interrupt", GPIOD_ASIS);
+	if (IS_ERR(desc)) {
 		dev_err(dev, "IRQ GPIO error getting from OF node\n");
-		return val;
+		return PTR_ERR(desc);
 	}
+	pdata->irq_gpio = desc_to_gpio(desc);
 
 	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,3,0)
-	val = of_get_named_gpio_flags(node, "nxp,pn54x-clkreq", 0, &flags);
-#else
-	val = of_get_named_gpio(node, "nxp,pn54x-clkreq", 0);
-#endif
-	if (val >= 0) {
-		pdata->clkreq_gpio = val;
-	}
-	else {
+	desc = devm_gpiod_get_optional(dev, "clkreq", GPIOD_ASIS);
+	if (IS_ERR(desc)) {
 		pdata->clkreq_gpio = GPIO_UNUSED;
 		dev_warn(dev, "CLKREQ GPIO <OPTIONAL> error getting from OF node\n");
+	} else {
+		pdata->clkreq_gpio = desc ? desc_to_gpio(desc) : GPIO_UNUSED;
 	}
 
 	/* handle the regulator lines - these are optional
