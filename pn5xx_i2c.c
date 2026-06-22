@@ -468,29 +468,21 @@ static int pn54x_get_pdata_of(struct device *dev,
 	 * Example: if only PVdd is provided, it is the only one that will be
 	 *  turned on/off.
 	 */
-	pdata->pvdd_reg = regulator_get(dev, "nxp,pn54x-pvdd");
-	if(IS_ERR(pdata->pvdd_reg)) {
-		pr_err("%s: could not get nxp,pn54x-pvdd, rc=%ld\n", __func__, PTR_ERR(pdata->pvdd_reg));
+	pdata->pvdd_reg = devm_regulator_get_optional(dev, "nxp,pn54x-pvdd");
+	if (IS_ERR(pdata->pvdd_reg))
 		pdata->pvdd_reg = NULL;
-	}
 
-	pdata->vbat_reg = regulator_get(dev, "nxp,pn54x-vbat");
-	if (IS_ERR(pdata->vbat_reg)) {
-		pr_err("%s: could not get nxp,pn54x-vbat, rc=%ld\n", __func__, PTR_ERR(pdata->vbat_reg));
+	pdata->vbat_reg = devm_regulator_get_optional(dev, "nxp,pn54x-vbat");
+	if (IS_ERR(pdata->vbat_reg))
 		pdata->vbat_reg = NULL;
-	}
 
-	pdata->pmuvcc_reg = regulator_get(dev, "nxp,pn54x-pmuvcc");
-	if (IS_ERR(pdata->pmuvcc_reg)) {
-		pr_err("%s: could not get nxp,pn54x-pmuvcc, rc=%ld\n", __func__, PTR_ERR(pdata->pmuvcc_reg));
+	pdata->pmuvcc_reg = devm_regulator_get_optional(dev, "nxp,pn54x-pmuvcc");
+	if (IS_ERR(pdata->pmuvcc_reg))
 		pdata->pmuvcc_reg = NULL;
-	}
 
-	pdata->sevdd_reg = regulator_get(dev, "nxp,pn54x-sevdd");
-	if (IS_ERR(pdata->sevdd_reg)) {
-		pr_err("%s: could not get nxp,pn54x-sevdd, rc=%ld\n", __func__, PTR_ERR(pdata->sevdd_reg));
+	pdata->sevdd_reg = devm_regulator_get_optional(dev, "nxp,pn54x-sevdd");
+	if (IS_ERR(pdata->sevdd_reg))
 		pdata->sevdd_reg = NULL;
-	}
 
 	return 0;
 }
