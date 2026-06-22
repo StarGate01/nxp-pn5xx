@@ -33,8 +33,6 @@
 #define CLK_OFF 0
 #define CLK_ON  1
 
-#define GPIO_UNUSED -1
-
 #define PN544_SET_PWR	_IOW(PN544_MAGIC, 0x01, unsigned int)
 #define PN54X_CLK_REQ	_IOW(PN544_MAGIC, 0x02, unsigned int)
 
